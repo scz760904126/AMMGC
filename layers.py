@@ -66,7 +66,8 @@ class Layer(object):
 
 class Self_attention(Layer):
     """Self_attention layer."""
-    def __init__(self,size,n_head,size_per_head,placeholders,act=tf.nn.relu, **kwargs):
+
+    def __init__(self, size, n_head, size_per_head, placeholders, act=tf.nn.relu, **kwargs):
         super(Self_attention, self).__init__(**kwargs)
         self.n_head = n_head
         self.size_per_head = size_per_head
@@ -81,7 +82,7 @@ class Self_attention(Layer):
         if self.logging:
             self._log_vars()
 
-    def _call(self,inputs):
+    def _call(self, inputs):
         att_list = []
         Q = inputs[0]
         K = inputs[1]
@@ -95,7 +96,7 @@ class Self_attention(Layer):
             Q_temp = tf.matmul(Q, self.vars['Q_weight'])
             K_temp = tf.matmul(K, self.vars['K_weight'])
             V_temp = tf.matmul(V, self.vars['V_weight'])
-            A_temp = tf.matmul(Q_temp, K_temp,transpose_b=True) \
+            A_temp = tf.matmul(Q_temp, K_temp, transpose_b=True) \
                      / tf.sqrt(float(self.size_per_head))
             A_temp = tf.nn.softmax(A_temp)
             att = tf.matmul(A_temp, V_temp)
@@ -110,7 +111,8 @@ class Self_attention(Layer):
 
 class feedforward(Layer):
     """feedforward layer."""
-    def __init__(self,placeholders,num_node,size,act=tf.nn.relu, **kwargs):
+
+    def __init__(self, placeholders, num_node, size, act=tf.nn.relu, **kwargs):
         super(feedforward, self).__init__(**kwargs)
 
         self.placeholders = placeholders
@@ -125,10 +127,9 @@ class feedforward(Layer):
         if self.logging:
             self._log_vars()
 
-    def _call(self,att):
-
+    def _call(self, att):
         forward1 = tf.matmul(att, self.vars['W1'])
-        forward1 = tf.add(forward1,self.vars['b1'])
+        forward1 = tf.add(forward1, self.vars['b1'])
         forward1 = self.act(forward1)
 
         forward2 = tf.matmul(forward1, self.vars['W2'])
@@ -136,9 +137,11 @@ class feedforward(Layer):
 
         return forward2
 
+
 class attention(Layer):
     """attention layer."""
-    def __init__(self,outputdim,adjs,placeholders,act=tf.nn.relu, **kwargs):
+
+    def __init__(self, outputdim, adjs, placeholders, act=tf.nn.relu, **kwargs):
         super(attention, self).__init__(**kwargs)
 
         self.output_dim = outputdim
@@ -149,12 +152,12 @@ class attention(Layer):
 
         with tf.variable_scope(self.name + '_vars'):
             self.vars['attWeight'] = glorot([self.num_support, self.output_dim])
-            self.vars['attBias'] = glorot([self.num_support, 128])
+            self.vars['attBias'] = glorot([self.num_support, 256])
 
         if self.logging:
             self._log_vars()
 
-    def _call(self,inputs):
+    def _call(self, inputs):
 
         attention = []
         attADJ = []
@@ -171,7 +174,4 @@ class attention(Layer):
         # mixedADJ = tf.add_n(attADJ)
         mixedADJ = tf.concat(attADJ, 1)
 
-        return mixedADJ
-
-
-
+        return mixedADJ, attention

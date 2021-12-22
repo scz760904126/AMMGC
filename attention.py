@@ -1,10 +1,12 @@
 from layers import *
 from metrics import *
 from utils import *
+
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-def masked_cross_entropy(preds, labels,label_mask,test_mask):
+
+def masked_cross_entropy(preds, labels, label_mask, test_mask):
     """Accuracy with masking."""
     preds = tf.cast(preds, tf.float32)
     labels = tf.cast(labels, tf.float32)
@@ -20,16 +22,18 @@ def masked_cross_entropy(preds, labels,label_mask,test_mask):
 
     return tf.sqrt(tf.reduce_mean(error))
 
+
 def masked_accuracy(preds, labels, label_mask, test_mask):
     preds = tf.cast(preds, tf.float32)
     labels = tf.cast(labels, tf.float32)
-    error = tf.square(preds-labels)
+    error = tf.square(preds - labels)
     label_mask += test_mask
     mask = tf.cast(test_mask, dtype=tf.float32)
     mask = tf.reshape(mask, shape=[79924])
     error *= mask
 
     return tf.sqrt(tf.reduce_mean(error))
+
 
 class Model(object):
     def __init__(self, **kwargs):
@@ -49,13 +53,13 @@ class Model(object):
 
         self.layers = []
         self.activations = []
+        self.att_ls = []
 
         self.inputs = None
         self.att = None
         self.feedforward = None
         self.mixed = None
         # self.output = None
-
 
         self.pred = 0
         self.loss = 0
@@ -75,11 +79,12 @@ class Model(object):
 
         self.activations.append(self.inputs)
         for layer in self.layers:
-            hidden = layer(self.activations[-1])
+            hidden, att_ = layer(self.activations[-1])
             self.activations.append(hidden)
+            self.att_ls.append(att_)
 
         self.output = self.activations[-1]
-
+        self.att = self.att_ls[-1]
 
         # Store model variables for easy access
         variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.name)
@@ -92,7 +97,6 @@ class Model(object):
         self._accuracy()
 
         self.opt_op = self.optimizer.minimize(self.loss)
-
 
     def predict(self):
         raise NotImplementedError
@@ -123,7 +127,7 @@ class Model(object):
 
 
 class attentionModel(Model, ):
-    def __init__(self, placeholders,num_edges, **kwargs):
+    def __init__(self, placeholders, num_edges, **kwargs):
         super(attentionModel, self).__init__(**kwargs)
 
         self.num_edges = num_edges
@@ -144,29 +148,24 @@ class attentionModel(Model, ):
         self.layers.append(attention(outputdim=self.output_dim,
                                      adjs=self.adjs,
                                      placeholders=self.placeholders,
-                                   ))
+                                     ))
 
     def predict(self):
         num_drug = 106
-        pred = tf.matmul(self.output, self.output,transpose_b= True)
+        pred = tf.matmul(self.output, self.output, transpose_b=True)
         self.pred = tf.slice(pred, [0, num_drug], [num_drug, -1])
         self.pred = tf.reshape(self.pred, [-1])
         return self.pred
 
     def _loss(self):
-
         for var in self.layers[0].vars.values():
             self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
 
         pos_weight = float(79924 - self.num_edges) / self.num_edges
 
-        self.loss += gcn_masked_softmax_cross_entropy(self.pred, tf.reshape(self.labels,[-1]), self.positive_mask,
-                                     self.negative_mask, pos_weight= pos_weight)
+        self.loss += gcn_masked_softmax_cross_entropy(self.pred, tf.reshape(self.labels, [-1]), self.positive_mask,
+                                                      self.negative_mask, pos_weight=pos_weight)
+
     def _accuracy(self):
-        self.accuracy = masked_accuracy(self.pred, tf.reshape(self.labels,[-1]), self.positive_mask,
+        self.accuracy = masked_accuracy(self.pred, tf.reshape(self.labels, [-1]), self.positive_mask,
                                         self.negative_mask)
-
-
-
-
-

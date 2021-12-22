@@ -98,6 +98,7 @@ class Model(object):
         saver.restore(sess, save_path)
         print("Model restored from file: %s" % save_path)
 
+
 class GraphConvolution():
     """Basic graph convolution layer for undirected graph without edge labels."""
 
@@ -178,7 +179,7 @@ class InnerProductDecoder():
 
 
 class GCNModel():
-    def __init__(self, placeholders, num_features, features_nonzero, num_nodes, num_edges,name):
+    def __init__(self, placeholders, num_features, features_nonzero, num_nodes, num_edges, name):
         self.name = name
         self.placeholders = placeholders
         self.inputs = placeholders['features']
@@ -192,15 +193,14 @@ class GCNModel():
         # self.mask = placeholders['labels_mask']
         # self.negative_mask = placeholders['negative_mask']
 
-
         with tf.variable_scope(self.name):
             self.build()
 
     def build(self):
-        self.hidden1 = GraphConvolutionSparse(
+        hidden = GraphConvolutionSparse(
             name='gcn_sparse_layer',
             input_dim=self.input_dim,
-            output_dim=FLAGS.hidden1,
+            output_dim=FLAGS.hidden2,
             adj=self.adj,
             features_nonzero=self.features_nonzero,
             act=tf.nn.relu,
@@ -208,11 +208,11 @@ class GCNModel():
 
         self.embeddings = GraphConvolution(
             name='gcn_dense_layer',
-            input_dim=FLAGS.hidden1,
+            input_dim=FLAGS.hidden2,
             output_dim=FLAGS.hidden2,
             adj=self.adj,
             act=lambda x: x,
-            dropout=self.dropout)(self.hidden1)
+            dropout=self.dropout)(hidden)
 
         self.reconstructions = InnerProductDecoder(
             name='gcn_decoder',
@@ -221,15 +221,13 @@ class GCNModel():
 
         pos_weight = float(self.num_nodes ** 2 - self.num_edges) / self.num_edges
         norm = self.num_nodes ** 2 / float((self.num_nodes ** 2 - self.num_edges) * 2)
-        # pos_weight = float(79924 - self.num_edges) / self.num_edges
-        # norm = 79924 / float((79924 - self.num_edges) * 2)
 
         pos_weight = 1
-        self.cost = gcn_masked_softmax_cross_entropy(self.reconstructions, tf.reshape(tf.sparse_tensor_to_dense(self.placeholders['adj_label'], validate_indices=False),
-                                   [-1]), self.placeholders['positive_mask'],self.placeholders['negative_mask'],  pos_weight)
+        self.cost = gcn_masked_softmax_cross_entropy(self.reconstructions, tf.reshape(
+            tf.sparse_tensor_to_dense(self.placeholders['adj_label'], validate_indices=False),
+            [-1]), self.placeholders['positive_mask'], self.placeholders['negative_mask'], pos_weight)
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)  # Adam Optimizer
 
         self.opt_op = self.optimizer.minimize(self.cost)
         self.grads_vars = self.optimizer.compute_gradients(self.cost)
-

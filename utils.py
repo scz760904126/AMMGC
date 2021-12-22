@@ -114,7 +114,7 @@ def gcn_masked_softmax_cross_entropy(preds, labels, positive_mask, negative_mask
 def generate_mask(train_drug_miRNA_matrix, N):
     num = 0
     mask = np.zeros(train_drug_miRNA_matrix.shape)
-    while (num < 1 * N):
+    while (num < 10 * N):
         a = random.randint(0, 105)
         b = random.randint(0, 753)
         if train_drug_miRNA_matrix[a, b] != 1 and mask[a, b] != 1:

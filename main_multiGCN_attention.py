@@ -9,8 +9,8 @@ import tensorflow.compat.v1 as tf
 import random
 import matplotlib.pyplot as plt
 
-
 tf.disable_eager_execution()
+
 
 def GCN_process(train_drug_miRNA_matrix, adj_train, adj_norm, features, num_nodes, num_edges, positive_train,
                 positive_mask):
@@ -23,9 +23,9 @@ def GCN_process(train_drug_miRNA_matrix, adj_train, adj_norm, features, num_node
     flags = tf.app.flags
     FLAGS = flags.FLAGS
     flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-    flags.DEFINE_integer('epochs', 5, 'Number of epochs to train.') # 100 epochs
+    flags.DEFINE_integer('epochs', 5, 'Number of epochs to train.')  # 400 epochs
     flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
-    flags.DEFINE_integer('hidden2', 128, 'Number of units in hidden layer 2.')
+    flags.DEFINE_integer('hidden2', 256, 'Number of units in hidden layer 2.')
     flags.DEFINE_float('dropout', 0.1, 'Dropout rate (1 - keep probability).')
 
     num_drug = 106
@@ -46,13 +46,6 @@ def GCN_process(train_drug_miRNA_matrix, adj_train, adj_norm, features, num_node
         'negative_mask': tf.placeholder(shape=[79924, 1], dtype=tf.int32),
     }
 
-    # Create model
-    model = GCNModel(placeholders, num_features, features_nonzero, num_nodes, num_edges, name='yeast_gcn')
-
-    # Initialize session
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
-
     adj_label = adj_train + sp.eye(adj_train.shape[0])
     adj_label = adj_label.todense()
     adj_label = adj_label[0:106, 106::]
@@ -62,6 +55,11 @@ def GCN_process(train_drug_miRNA_matrix, adj_train, adj_norm, features, num_node
     epoches = []
     avg_costs = []
 
+    # Create model
+    model = GCNModel(placeholders, num_features, features_nonzero, num_nodes, num_edges, name='yeast_gcn')
+    # Initialize session
+    sess = tf.Session()
+    sess.run(tf.global_variables_initializer())
     # Train model
     for epoch in range(FLAGS.epochs):
         # Create optimizer
@@ -110,10 +108,10 @@ def attention_process(emb, positive_train, positive_mask, train_drug_miRNA_matri
     flags = tf.app.flags
     FLAGS = flags.FLAGS
 
-    flags.DEFINE_string('model', 'attSemiGAE', 'Model string.')  # 'gcn', 'semiencoder', 'attSemiGAE'
-    flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-    flags.DEFINE_integer('epochs', 5, 'Number of epochs to train.')    # 300 epochs
-    flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
+    flags.DEFINE_string('model', 'attSemiGAE', 'Model string.')
+    flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')    # 0.01
+    flags.DEFINE_integer('epochs', 5, 'Number of epochs to train.')  # 1000 epochs
+    flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')  # 0.01
     flags.DEFINE_float('weight_decay', 0, 'Weight for L2 loss on embedding matrix.')
     flags.DEFINE_integer('early_stopping', 50, 'Tolerance for early stopping (# of epochs).')
     flags.DEFINE_integer('max_degree', 3, 'Maximum Chebyshev polynomial degree.')
@@ -121,25 +119,20 @@ def attention_process(emb, positive_train, positive_mask, train_drug_miRNA_matri
     num_supports = len(emb)
     # Load data
     placeholders = {
-        'emb': [tf.placeholder(tf.float32, shape=(860, 128)) for _ in range(num_supports)],
+        'emb': [tf.placeholder(tf.float32, shape=(860, 256)) for _ in range(num_supports)],
         'adj_label': tf.placeholder(tf.float32, shape=(106, 754)),
         'positive_mask': tf.placeholder(shape=[79924, 1], dtype=tf.int32),
         'negative_mask': tf.placeholder(shape=[79924, 1], dtype=tf.int32),
         'dropout': tf.placeholder_with_default(0., shape=()),
     }
 
-    # Create model
-    model = attentionModel(placeholders, num_edges, logging=True)
-
-    # Initialize session
-    sess = tf.Session()
-
-    # Init variables
-    sess.run(tf.global_variables_initializer())
-
     epoches = []
     avg_costs = []
 
+    # Create model
+    model = attentionModel(placeholders, num_edges, logging=True)
+    sess = tf.Session()
+    sess.run(tf.global_variables_initializer())
     # Train model
     for epoch in range(FLAGS.epochs):
         negative_mask = generate_mask(train_drug_miRNA_matrix, len(positive_train))
@@ -152,7 +145,7 @@ def attention_process(emb, positive_train, positive_mask, train_drug_miRNA_matri
         outs = sess.run([model.opt_op, model.loss], feed_dict=feed_dict)
 
         epoches.append(epoch)
-        avg_costs.append(outs[1])
+        avg_costs.append(outs)
 
         # Print results
         print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(outs[1]), "time=",
@@ -166,7 +159,7 @@ def attention_process(emb, positive_train, positive_mask, train_drug_miRNA_matri
     print("Optimization Finished!")
 
     feed_dict.update({placeholders['dropout']: 0})
-    output = sess.run(model.output, feed_dict=feed_dict)
+    output, att = sess.run([model.output, model.att], feed_dict=feed_dict)
 
     def del_all_flags(FLAGS):
         flags_dict = FLAGS._flags()
@@ -176,7 +169,7 @@ def attention_process(emb, positive_train, positive_mask, train_drug_miRNA_matri
 
     del_all_flags(flags.FLAGS)
 
-    return output
+    return output, att
 
 
 # 交叉验证
@@ -240,8 +233,7 @@ def cross_validation(adj, seed):
         positive_mask = train_drug_miRNA_matrix.reshape(-1, 1)
 
         num_edges = train_drug_miRNA_matrix.sum()
-        print('训练集中边的数目')
-        print(num_edges)
+        # print(num_edges)
 
         adj_train = constructNet(train_drug_miRNA_matrix)
         adj_train = sp.csr_matrix(adj_train)
@@ -267,10 +259,19 @@ def cross_validation(adj, seed):
         emb.append(emb4)
 
         tf.reset_default_graph()
-        att_emb = attention_process(emb, positive_train, positive_mask, train_drug_miRNA_matrix, num_edges)
+        att_emb, att = attention_process(emb, positive_train, positive_mask, train_drug_miRNA_matrix, num_edges)
 
         name = 'gcn_result_con/5_fold_att_emb.csv'
         np.savetxt(name, att_emb, delimiter=',')
+        # att_ls = []
+        for a in range(len(att)):
+            tmp_att = np.diag(att[a])
+            tmp_ls = []
+            for t in range(len(tmp_att)):
+                tmp_ls.append(tmp_att[t][t])
+            # att_ls.append(tmp_ls)
+        # att_ls = np.array(att_ls)
+        # np.savetxt('gcn_result_con/att.txt', att_ls)
 
         adj_rec = np.dot(att_emb, att_emb.T)
         adj_rec = adj_rec[0: num_drug, num_drug::]
@@ -296,9 +297,10 @@ def cross_validation(adj, seed):
         metric = model_evaluate(test_real, test_pre)
         print("------the metrics of %dth cross validation------" % (k + 1))
         print(metric)
-
         sum_metric += metric
-    return sum_metric / k_folds
+        break
+
+    return sum_metric
 
 
 datetime1 = datetime.now()
@@ -312,15 +314,18 @@ adj_dense = constructNet(bi_adj)
 adj = sp.csr_matrix(adj_dense)
 
 sum_metric = np.zeros((1, 7))
-circle = 10
+circle = 1
+file = open('gcn_result_con/main_result.txt', 'w')
 for i in range(circle):
-    metric = np.zeros((1, 7))
     metric = cross_validation(adj, i)
+    for j in metric[0]:
+        file.write(str(j) + '\t')
+    file.write('\n')
     sum_metric += metric
-    name = 'gcn_result_con/128_128_multi_attention_5fold_drug_miRNA_seed' + str(i) + '.csv'
-    np.savetxt(name, metric, delimiter=',')
 avg_metric = sum_metric / circle
-name = 'gcn_result_con/avg_128_128_multi_attention_5fold_drug_miRNA.csv'
-np.savetxt(name, avg_metric, delimiter=',')
+# file.write('average metric \n')
+for j in avg_metric[0]:
+    file.write(str(j) + '\t')
+
 print('##########running time###############')
 print(datetime.now() - datetime1)
